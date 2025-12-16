@@ -16,7 +16,7 @@ app.use(cors());
 //coffeeMaster
 
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.39yqdr4.mongodb.net/?appName=Cluster0`;
-console.log(uri);
+// console.log(uri);
 
 // const uri =
 //   "mongodb+srv://coffeeMaster:wBSUkSn8eSMX5gwP@cluster0.39yqdr4.mongodb.net/?appName=Cluster0";
@@ -138,7 +138,7 @@ run().catch(console.dir);
 app.get("/", (req, res) => {
   res.send("server site successfully run");
 });
-
+module.exports = app;
 // app.listen(port, () => {
 //   console.log(`server is run on port : ${port}`);
 // });
