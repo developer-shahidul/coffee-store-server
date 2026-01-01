@@ -9,17 +9,8 @@ const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 app.use(express.json());
 app.use(cors());
 
-// dotenv
-// console.log(process.env.DB_USER);
-// console.log(process.env.DB_PASS);
-// wBSUkSn8eSMX5gwP
-//coffeeMaster
-
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.39yqdr4.mongodb.net/?appName=Cluster0`;
 // console.log(uri);
-
-// const uri =
-//   "mongodb+srv://coffeeMaster:wBSUkSn8eSMX5gwP@cluster0.39yqdr4.mongodb.net/?appName=Cluster0";
 
 // Create a MongoClient with a MongoClientOptions object to set the Stable API version
 const client = new MongoClient(uri, {
@@ -129,8 +120,6 @@ async function run() {
       "Pinged your deployment. You successfully connected to MongoDB!"
     );
   } finally {
-    // Ensures that the client will close when you finish/error
-    // await client.close();
   }
 }
 run().catch(console.dir);
