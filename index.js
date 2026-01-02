@@ -4,218 +4,191 @@ const cors = require("cors");
 const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 
 const app = express();
-const port = process.env.PORT || 5000;
 
 // Middleware
 app.use(express.json());
 app.use(cors());
 
-// MongoDB Connection URI
-const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.39yqdr4.mongodb.net/?appName=Cluster0`;
+// MongoDB URI
+const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.39yqdr4.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0`;
 
-// MongoClient setup
-const client = new MongoClient(uri, {
-  serverApi: {
-    version: ServerApiVersion.v1,
-    strict: true,
-    deprecationErrors: true,
-  },
-});
-
-// Collections (will be assigned after connection)
+// Global client and collections for reuse in serverless
+let client;
 let coffeeCollection;
 let userCollection;
 
-// Main async function to connect and setup routes
-async function run() {
+async function connectToDB() {
+  if (client && client.topology && client.topology.isConnected()) {
+    return { coffeeCollection, userCollection };
+  }
+
   try {
-    // Connect to MongoDB
+    client = new MongoClient(uri, {
+      serverApi: {
+        version: ServerApiVersion.v1,
+        strict: true,
+        deprecationErrors: true,
+      },
+    });
+
     await client.connect();
-    console.log("✅ Successfully connected to MongoDB!");
+    console.log("✅ MongoDB connected successfully!");
 
     const database = client.db("Coffee-collection");
     coffeeCollection = database.collection("coffee");
     userCollection = database.collection("users");
 
-    // ==================== Coffee Routes ====================
-
-    // Get all coffees
-    app.get("/coffee", async (req, res) => {
-      try {
-        const result = await coffeeCollection.find({}).toArray();
-        console.log(`📋 Fetched ${result.length} coffees`);
-        res.send(result);
-      } catch (error) {
-        console.error("❌ Error fetching coffees:", error);
-        res.status(500).send({ message: "Failed to fetch coffees" });
-      }
-    });
-
-    // Get single coffee by ID
-    app.get("/coffee/:id", async (req, res) => {
-      try {
-        const id = req.params.id;
-        if (!ObjectId.isValid(id)) {
-          return res.status(400).send({ message: "Invalid ID format" });
-        }
-        const query = { _id: new ObjectId(id) };
-        const result = await coffeeCollection.findOne(query);
-        if (!result) {
-          return res.status(404).send({ message: "Coffee not found" });
-        }
-        res.send(result);
-      } catch (error) {
-        console.error("❌ Error fetching coffee:", error);
-        res.status(500).send({ message: "Server error" });
-      }
-    });
-
-    // Add new coffee
-    app.post("/coffee", async (req, res) => {
-      try {
-        const newCoffee = req.body;
-        const result = await coffeeCollection.insertOne(newCoffee);
-        res.send(result);
-      } catch (error) {
-        console.error("❌ Error adding coffee:", error);
-        res.status(500).send({ message: "Failed to add coffee" });
-      }
-    });
-
-    // Update coffee (PUT)
-    app.put("/coffee/:id", async (req, res) => {
-      try {
-        const id = req.params.id;
-        if (!ObjectId.isValid(id)) {
-          return res.status(400).send({ message: "Invalid ID format" });
-        }
-        const updatedCoffee = req.body;
-        const query = { _id: new ObjectId(id) };
-
-        const updateDoc = {
-          $set: {
-            name: updatedCoffee.name,
-            chef: updatedCoffee.chef,
-            supplier: updatedCoffee.supplier,
-            taste: updatedCoffee.taste,
-            category: updatedCoffee.category,
-            details: updatedCoffee.details,
-            photo: updatedCoffee.photo,
-          },
-        };
-
-        const result = await coffeeCollection.updateOne(query, updateDoc, {
-          upsert: true,
-        });
-        res.send(result);
-      } catch (error) {
-        console.error("❌ Error updating coffee:", error);
-        res.status(500).send({ message: "Failed to update coffee" });
-      }
-    });
-
-    // Delete coffee
-    app.delete("/coffee/:id", async (req, res) => {
-      try {
-        const id = req.params.id;
-        if (!ObjectId.isValid(id)) {
-          return res.status(400).send({ message: "Invalid ID format" });
-        }
-        const query = { _id: new ObjectId(id) };
-        const result = await coffeeCollection.deleteOne(query);
-        res.send(result);
-      } catch (error) {
-        console.error("❌ Error deleting coffee:", error);
-        res.status(500).send({ message: "Failed to delete coffee" });
-      }
-    });
-
-    // ==================== User Routes ====================
-
-    // Create or update user (usually after login)
-    app.post("/users", async (req, res) => {
-      try {
-        const user = req.body;
-        const result = await userCollection.insertOne(user);
-        console.log("👤 New user created:", user.email);
-        res.send(result);
-      } catch (error) {
-        console.error("❌ Error creating user:", error);
-        res.status(500).send({ message: "Failed to create user" });
-      }
-    });
-
-    // Get all users (admin use)
-    app.get("/users", async (req, res) => {
-      try {
-        const result = await userCollection.find({}).toArray();
-        res.send(result);
-      } catch (error) {
-        console.error("❌ Error fetching users:", error);
-        res.status(500).send({ message: "Failed to fetch users" });
-      }
-    });
-
-    // Delete user
-    app.delete("/users/:id", async (req, res) => {
-      try {
-        const id = req.params.id;
-        if (!ObjectId.isValid(id)) {
-          return res.status(400).send({ message: "Invalid ID" });
-        }
-        const query = { _id: new ObjectId(id) };
-        const result = await userCollection.deleteOne(query);
-        res.send(result);
-      } catch (error) {
-        res.status(500).send({ message: "Failed to delete user" });
-      }
-    });
-
-    // Update last sign-in time (PATCH)
-    app.patch("/users", async (req, res) => {
-      try {
-        const { email, lastSignInTime } = req.body;
-        if (!email) {
-          return res.status(400).send({ message: "Email is required" });
-        }
-        const filter = { email };
-        const updateDoc = {
-          $set: { lastSignInTime },
-        };
-        const result = await userCollection.updateOne(filter, updateDoc);
-        res.send(result);
-      } catch (error) {
-        console.error("❌ Error updating user:", error);
-        res.status(500).send({ message: "Failed to update user" });
-      }
-    });
-
-    // Ping to confirm connection
-    await client.db("admin").command({ ping: 1 });
-    console.log("🔔 MongoDB ping successful!");
+    return { coffeeCollection, userCollection };
   } catch (error) {
     console.error("❌ MongoDB connection failed:", error);
+    throw error;
   }
 }
 
-// Run the setup
-run();
-
-// Root route
+// Routes — সব routes connection-এর বাইরে, যাতে register হয়
 app.get("/", (req, res) => {
   res.send("☕ Coffee Store Server is running successfully!");
 });
 
-// Global error handler (must be after all routes)
+// Coffee Routes
+app.get("/coffee", async (req, res) => {
+  try {
+    const { coffeeCollection } = await connectToDB();
+    const result = await coffeeCollection.find({}).toArray();
+    res.send(result);
+  } catch (error) {
+    res.status(500).send({ message: "Failed to fetch coffees" });
+  }
+});
+
+app.get("/coffee/:id", async (req, res) => {
+  try {
+    const { coffeeCollection } = await connectToDB();
+    const id = req.params.id;
+    if (!ObjectId.isValid(id)) {
+      return res.status(400).send({ message: "Invalid ID format" });
+    }
+    const query = { _id: new ObjectId(id) };
+    const result = await coffeeCollection.findOne(query);
+    if (!result) {
+      return res.status(404).send({ message: "Coffee not found" });
+    }
+    res.send(result);
+  } catch (error) {
+    res.status(500).send({ message: "Server error" });
+  }
+});
+
+app.post("/coffee", async (req, res) => {
+  try {
+    const { coffeeCollection } = await connectToDB();
+    const result = await coffeeCollection.insertOne(req.body);
+    res.send(result);
+  } catch (error) {
+    res.status(500).send({ message: "Failed to add coffee" });
+  }
+});
+
+app.put("/coffee/:id", async (req, res) => {
+  try {
+    const { coffeeCollection } = await connectToDB();
+    const id = req.params.id;
+    if (!ObjectId.isValid(id)) {
+      return res.status(400).send({ message: "Invalid ID format" });
+    }
+    const updateDoc = {
+      $set: req.body,
+    };
+    const query = { _id: new ObjectId(id) };
+    const result = await coffeeCollection.updateOne(query, updateDoc, {
+      upsert: true,
+    });
+    res.send(result);
+  } catch (error) {
+    res.status(500).send({ message: "Failed to update coffee" });
+  }
+});
+
+app.delete("/coffee/:id", async (req, res) => {
+  try {
+    const { coffeeCollection } = await connectToDB();
+    const id = req.params.id;
+    if (!ObjectId.isValid(id)) {
+      return res.status(400).send({ message: "Invalid ID format" });
+    }
+    const query = { _id: new ObjectId(id) };
+    const result = await coffeeCollection.deleteOne(query);
+    res.send(result);
+  } catch (error) {
+    res.status(500).send({ message: "Failed to delete coffee" });
+  }
+});
+
+// User Routes
+app.post("/users", async (req, res) => {
+  try {
+    const { userCollection } = await connectToDB();
+    const result = await userCollection.insertOne(req.body);
+    res.send(result);
+  } catch (error) {
+    res.status(500).send({ message: "Failed to create user" });
+  }
+});
+
+app.get("/users", async (req, res) => {
+  try {
+    const { userCollection } = await connectToDB();
+    const result = await userCollection.find({}).toArray();
+    res.send(result);
+  } catch (error) {
+    res.status(500).send({ message: "Failed to fetch users" });
+  }
+});
+
+app.delete("/users/:id", async (req, res) => {
+  try {
+    const { userCollection } = await connectToDB();
+    const id = req.params.id;
+    if (!ObjectId.isValid(id)) {
+      return res.status(400).send({ message: "Invalid ID" });
+    }
+    const query = { _id: new ObjectId(id) };
+    const result = await userCollection.deleteOne(query);
+    res.send(result);
+  } catch (error) {
+    res.status(500).send({ message: "Failed to delete user" });
+  }
+});
+
+app.patch("/users", async (req, res) => {
+  try {
+    const { userCollection } = await connectToDB();
+    const { email, lastSignInTime } = req.body;
+    if (!email) {
+      return res.status(400).send({ message: "Email is required" });
+    }
+    const filter = { email };
+    const updateDoc = { $set: { lastSignInTime } };
+    const result = await userCollection.updateOne(filter, updateDoc);
+    res.send(result);
+  } catch (error) {
+    res.status(500).send({ message: "Failed to update user" });
+  }
+});
+
+// Global error handler
 app.use((err, req, res, next) => {
   console.error("Global Error:", err.stack);
-  res.status(500).send({ message: "Something went wrong on the server!" });
+  res.status(500).send({ message: "Something went wrong!" });
 });
 
-// Start server
-app.listen(port, () => {
-  console.log(`🚀 Server is running on port: ${port}`);
-});
-
-// Optional: export for testing
+// Vercel-এর জন্য export (অবশ্যই)
 module.exports = app;
+
+// লোকালে চালালে listen করবে
+if (process.env.NODE_ENV !== "production") {
+  const port = process.env.PORT || 5000;
+  app.listen(port, () => {
+    console.log(`🚀 Local server running on port ${port}`);
+  });
+}
